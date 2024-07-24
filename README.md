@@ -1,0 +1,1 @@
+Simply counts the number of folders in the [OnBoard](https://github.com/hackclub/OnBoard) project's directory and exports it to be requested by Prometheus on `http://localhost/metrics:8521`.
