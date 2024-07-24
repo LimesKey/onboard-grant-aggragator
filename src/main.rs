@@ -26,17 +26,16 @@ fn main() {
 
     // Start the exporter
     let exporter = prometheus_exporter::start(addr).expect("Cannot start exporter");
-
+    let mut dir_count = count_dirs(temp_projects_path);
     loop {
         // Wait for a new request to come in
         let _guard = exporter.wait_request();
         info!("Updating metrics");
 
         // Update the metric with the current directory count
-        let dir_count = count_dirs(temp_projects_path);
-        info!("New directory count: {}", dir_count);
-
         metric.set(dir_count);
+        dir_count = count_dirs(temp_projects_path);
+        info!("New directory count: {}", dir_count);
     }
 }
 
