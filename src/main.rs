@@ -8,7 +8,6 @@ use reqwest::Url;
 use std::fs;
 use std::net::SocketAddr;
 
-
 mod lib;
 use lib::*;
 
@@ -23,20 +22,24 @@ async fn main() {
 
     // Create the metric
     let submitted_projects = register_gauge!(
-        "submitted_projects", "Number of folders in the projects directory in the OnBoard Github"
+        "submitted_projects",
+        "Number of folders in the projects directory in the OnBoard Github"
     )
     .expect("Cannot create gauge onboard_grants_given");
 
-    let mut transfer_count = { match hcb_transfers().await {
-        Ok(count) => count,
-        Err(e) => {
-            println!("Failed to fetch transfers: {}", e);
-            0
+    let mut transfer_count = {
+        match hcb_transfers().await {
+            Ok(count) => count,
+            Err(e) => {
+                println!("Failed to fetch transfers: {}", e);
+                0
+            }
         }
-    }};
-    
+    };
+
     let transfers_count = register_int_gauge!(
-        "transfers_count", "Grant transfers out of the OnBoard Hack Club Bank"
+        "transfers_count",
+        "Grant transfers out of the OnBoard Hack Club Bank"
     )
     .expect("Cannot create gauge onboard_grants_given");
 
@@ -56,13 +59,15 @@ async fn main() {
         info!("New directory count: {}", dir_count);
         info!("New transfer count: {}", transfer_count);
         dir_count = count_dirs();
-        transfer_count = { match hcb_transfers().await {
-            Ok(count) => count,
-            Err(e) => {
-                println!("Failed to fetch transfers: {}", e);
-                0
+        transfer_count = {
+            match hcb_transfers().await {
+                Ok(count) => count,
+                Err(e) => {
+                    println!("Failed to fetch transfers: {}", e);
+                    0
+                }
             }
-        }};
+        };
     }
 }
 
@@ -99,15 +104,23 @@ async fn hcb_transfers() -> Result<u16, reqwest::Error> {
     let mut transfers: Vec<Transfer> = Vec::new();
 
     loop {
-        let mut request_url: Url = Url::parse("https://hcb.hackclub.com/api/v3/organizations/onboard/transfers/").unwrap();
+        let mut request_url: Url =
+            Url::parse("https://hcb.hackclub.com/api/v3/organizations/onboard/transfers/").unwrap();
         request_url.query_pairs_mut().append_pair("per_page", "100");
-        request_url.query_pairs_mut().append_pair("expand", "transaction");
-        request_url.query_pairs_mut().append_pair("page", &page_offset.to_string());
-
+        request_url
+            .query_pairs_mut()
+            .append_pair("expand", "transaction");
+        request_url
+            .query_pairs_mut()
+            .append_pair("page", &page_offset.to_string());
 
         let response = reqwest::get(request_url.as_str()).await?;
         let json = response.json::<serde_json::Value>().await?;
-        println!(r##"Fetching transfers from page {} from Onboard's Hack Club Bank API using, "{}""##, page_offset+1, request_url);
+        println!(
+            r##"Fetching transfers from page {} from Onboard's Hack Club Bank API using, "{}""##,
+            page_offset + 1,
+            request_url
+        );
 
         if json.to_string() == "[]" {
             break;
@@ -127,6 +140,6 @@ async fn hcb_transfers() -> Result<u16, reqwest::Error> {
     transfers.retain(|transfer| (transfer.amount_cents / 100) <= 100);
     let transfer_count = transfers.len();
     println!("Total transfers fetched: {}", transfer_count);
-    
+
     Ok(u16::try_from(transfer_count).unwrap())
 }
