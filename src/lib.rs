@@ -35,15 +35,14 @@ pub struct Organization {
     href: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct Transfer {
     id: String,
     object: String,
     href: String,
-    memo: String,
     transaction: Transaction,
     organization: Organization,
-    amount_cents: i32,
+    amount_cents: u64,
     date: String,
     status: String,
 }

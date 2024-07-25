@@ -7,7 +7,6 @@ use prometheus_exporter::prometheus::register_gauge;
 use reqwest::Url;
 use std::fs;
 use std::net::SocketAddr;
-use serde::{Deserialize};
 use serde_json::Value;
 
 
@@ -74,8 +73,8 @@ fn count_dirs() -> f64 {
 }
 
 async fn hcb_transfers() -> Result<(), reqwest::Error> {
-    let page_offset = 10;
-    let mut transactions: Vec<Transfer>;
+    let mut page_offset = 0;
+    let mut transfers: Vec<Transfer> = Vec::new();
 
     loop {
         let mut request_url: Url = Url::parse("https://hcb.hackclub.com/api/v3/organizations/onboard/transfers/").unwrap();
@@ -85,16 +84,27 @@ async fn hcb_transfers() -> Result<(), reqwest::Error> {
 
 
         let response = reqwest::get(request_url.as_str()).await?;
-        let json: Value = response.json().await?;
+        let json = response.json::<serde_json::Value>().await?;
+        println!(r##"Fetching transfers from page {} from Onboard's Hack Club Bank API using, "{}""##, page_offset+1, request_url);
 
-        println!(r##"Fetching page {} transfers from Onboard's Hack Club Bank API using, "{}""##, page_offset, request_url);
-
-        if json.is_array() && json.as_array().unwrap().is_empty() {
+        if json.to_string() == "[]" {
             break;
         }
+
+        if let Some(raw_transfers) = json.as_array() {
+            for raw_transfer in raw_transfers {
+                let transfer = serde_json::from_value(raw_transfer.clone()).unwrap();
+                transfers.push(transfer);
+            }
+        } else {
+            println!("Failed to parse JSON array from response");
+        }
+        page_offset += 1;
     }
 
-    todo!();
+    println!("Total transfers fetched: {}", transfers.len());
+    println!("First transfer: {:?}", serde_json::to_string(&transfers.first()).unwrap());
+
     
     //let transfers: Vec<Transfer> = response.json::<Vec<Transfer>>().await?;
     Ok(())
