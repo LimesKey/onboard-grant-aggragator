@@ -3,11 +3,10 @@
 
 use env_logger::{Builder, Env};
 use log::info;
-use prometheus_exporter::prometheus::register_gauge;
+use prometheus_exporter::prometheus::{register_gauge, register_int_gauge};
 use reqwest::Url;
 use std::fs;
 use std::net::SocketAddr;
-use serde_json::Value;
 
 
 mod lib;
@@ -23,24 +22,47 @@ async fn main() {
     let addr: SocketAddr = addr_raw.parse().expect("Cannot parse listen address");
 
     // Create the metric
-    let metric = register_gauge!(
-        "onboard_submitted_projects",
-        "Number of folders in the projects directory in the OnBoard Github"
+    let submitted_projects = register_gauge!(
+        "submitted_projects", "Number of folders in the projects directory in the OnBoard Github"
     )
     .expect("Cannot create gauge onboard_grants_given");
-    hcb_transfers().await;
+
+    let mut transfer_count = { match hcb_transfers().await {
+        Ok(count) => count,
+        Err(e) => {
+            println!("Failed to fetch transfers: {}", e);
+            0
+        }
+    }};
+    
+    let transfers_count = register_int_gauge!(
+        "transfers_count", "Grant transfers out of the OnBoard Hack Club Bank"
+    )
+    .expect("Cannot create gauge onboard_grants_given");
+
+    let mut dir_count = count_dirs();
+
     // Start the exporter
     let exporter = prometheus_exporter::start(addr).expect("Cannot start exporter");
-    let mut dir_count = count_dirs();
     loop {
         // Wait for a new request to come in
         let _guard = exporter.wait_request();
         info!("Updating metrics");
 
         // Update the metric with the current directory count
-        metric.set(dir_count);
+        submitted_projects.set(dir_count);
+        transfers_count.set(transfer_count.into());
+
         info!("New directory count: {}", dir_count);
+        info!("New transfer count: {}", transfer_count);
         dir_count = count_dirs();
+        transfer_count = { match hcb_transfers().await {
+            Ok(count) => count,
+            Err(e) => {
+                println!("Failed to fetch transfers: {}", e);
+                0
+            }
+        }};
     }
 }
 
@@ -72,7 +94,7 @@ fn count_dirs() -> f64 {
     dir_count
 }
 
-async fn hcb_transfers() -> Result<(), reqwest::Error> {
+async fn hcb_transfers() -> Result<u16, reqwest::Error> {
     let mut page_offset = 0;
     let mut transfers: Vec<Transfer> = Vec::new();
 
@@ -102,10 +124,9 @@ async fn hcb_transfers() -> Result<(), reqwest::Error> {
         page_offset += 1;
     }
 
-    println!("Total transfers fetched: {}", transfers.len());
-    println!("First transfer: {:?}", serde_json::to_string(&transfers.first()).unwrap());
-
+    transfers.retain(|transfer| (transfer.amount_cents / 100) <= 100);
+    let transfer_count = transfers.len();
+    println!("Total transfers fetched: {}", transfer_count);
     
-    //let transfers: Vec<Transfer> = response.json::<Vec<Transfer>>().await?;
-    Ok(())
+    Ok(u16::try_from(transfer_count).unwrap())
 }

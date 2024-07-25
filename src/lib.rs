@@ -42,7 +42,7 @@ pub struct Transfer {
     href: String,
     transaction: Transaction,
     organization: Organization,
-    amount_cents: u64,
+    pub amount_cents: u64,
     date: String,
     status: String,
 }
