@@ -1,23 +1,10 @@
-# Rust as the base image
+# 1. This tells docker to use the Rust official image
 FROM rust:latest
+# 2. Copy the files in your machine to the Docker image
+COPY ./ ./
 
-# 1. Create a new empty shell project
-RUN USER=root cargo new --bin OnBoardGrant2
-WORKDIR /OnBoardGrant2
-
-# 2. Copy our manifests
-COPY ./Cargo.lock ./Cargo.lock
-COPY ./Cargo.toml ./Cargo.toml
-
-# 3. Build only the dependencies to cache them
+# Build your program for release
 RUN cargo build --release
-RUN rm src/*.rs
 
-# 4. Now that the dependency is built, copy your source code
-COPY ./src ./src
-
-# 5. Build for release.
-RUN rm ./target/release/deps/OnboardGrant*
-RUN cargo install --path .
-
-CMD ["holodeck"]
+# Run the binary
+CMD ["./target/release/OnboardGrant"]

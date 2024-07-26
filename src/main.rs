@@ -27,15 +27,7 @@ async fn main() {
     )
     .expect("Cannot create gauge onboard_grants_given");
 
-    let mut transfer_count = {
-        match hcb_transfers().await {
-            Ok(count) => count,
-            Err(e) => {
-                println!("Failed to fetch transfers: {}", e);
-                0
-            }
-        }
-    };
+    let mut transfer_count = count_transfers(hcb_data().await);
 
     let transfers_count = register_int_gauge!(
         "transfers_count",
@@ -46,7 +38,7 @@ async fn main() {
     let mut dir_count = count_dirs();
 
     // Start the exporter
-    let exporter = prometheus_exporter::start(addr).expect("Cannot start exporter");
+    let exporter = prometheus_exporter::start(addr).expect("Cannot sta rt exporter");
     loop {
         // Wait for a new request to come in
         let _guard = exporter.wait_request();
@@ -59,16 +51,9 @@ async fn main() {
         info!("New directory count: {}", dir_count);
         info!("New transfer count: {}", transfer_count);
         dir_count = count_dirs();
-        transfer_count = {
-            match hcb_transfers().await {
-                Ok(count) => count,
-                Err(e) => {
-                    println!("Failed to fetch transfers: {}", e);
-                    0
-                }
-            }
-        };
-    }
+        transfer_count = count_transfers(hcb_data().await);
+
+        }
 }
 
 fn count_dirs() -> f64 {
@@ -99,7 +84,7 @@ fn count_dirs() -> f64 {
     dir_count
 }
 
-async fn hcb_transfers() -> Result<u16, reqwest::Error> {
+async fn hcb_data() -> Result<Vec<Transfer>, reqwest::Error> {
     let mut page_offset = 0;
     let mut transfers: Vec<Transfer> = Vec::new();
 
@@ -138,8 +123,15 @@ async fn hcb_transfers() -> Result<u16, reqwest::Error> {
     }
 
     transfers.retain(|transfer| (transfer.amount_cents / 100) <= 100);
-    let transfer_count = transfers.len();
-    println!("Total transfers fetched: {}", transfer_count);
+    Ok(transfers)
+}
 
-    Ok(u16::try_from(transfer_count).unwrap())
+fn count_transfers(transfers: Result<Vec<Transfer>, reqwest::Error>) -> u16 {
+    match transfers {
+        Ok(count) => return count.len() as u16,
+                Err(e) => {
+                    println!("Failed to fetch transfers: {}", e);
+                    return 0;
+                }
+            };
 }
