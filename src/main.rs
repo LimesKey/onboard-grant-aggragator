@@ -35,18 +35,15 @@ async fn main() {
     .expect("Cannot create gauge onboard_grants_given");
 
     // Create the metric
-    let average_grant_value = register_gauge!(
-        "avg_grant",
-        "Average dollars given per grant"
-    )
-    .expect("Cannot create gauge onboard_grants_given");
+    let average_grant_value = register_gauge!("avg_grant", "Average dollars given per grant")
+        .expect("Cannot create gauge onboard_grants_given");
 
     // Start the exporter
     let exporter = prometheus_exporter::start(addr).expect("Cannot sta rt exporter");
     loop {
         // Wait for a new request to come in
         let _guard = exporter.wait_request();
-        
+
         info!("Updating metrics");
 
         // Update the metric with the current directory count
@@ -147,7 +144,7 @@ fn avg_grant(transfers: &Result<Vec<Transfer>, reqwest::Error>) -> f64 {
                 total += transfer.amount_cents / 100;
             }
             return total as f64 / transfers.len() as f64;
-        },
+        }
         Err(e) => {
             println!("Failed to fetch transfers: {}", e);
             return 0.0;
