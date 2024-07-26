@@ -19,6 +19,7 @@ async fn main() {
     // Parse the address used to bind the exporter.
     let addr_raw = "0.0.0.0:8521";
     let addr: SocketAddr = addr_raw.parse().expect("Cannot parse listen address");
+    let TransferData = hcb_data().await;
 
     // Create the metric
     let submitted_projects = register_gauge!(
@@ -27,33 +28,35 @@ async fn main() {
     )
     .expect("Cannot create gauge onboard_grants_given");
 
-    let mut transfer_count = count_transfers(hcb_data().await);
-
     let transfers_count = register_int_gauge!(
         "transfers_count",
         "Grant transfers out of the OnBoard Hack Club Bank"
     )
     .expect("Cannot create gauge onboard_grants_given");
 
-    let mut dir_count = count_dirs();
+    // Create the metric
+    let average_grant_value = register_gauge!(
+        "avg_grant",
+        "Average dollars given per grant"
+    )
+    .expect("Cannot create gauge onboard_grants_given");
 
     // Start the exporter
     let exporter = prometheus_exporter::start(addr).expect("Cannot sta rt exporter");
     loop {
         // Wait for a new request to come in
         let _guard = exporter.wait_request();
+        
         info!("Updating metrics");
 
         // Update the metric with the current directory count
-        submitted_projects.set(dir_count);
-        transfers_count.set(transfer_count.into());
-
-        info!("New directory count: {}", dir_count);
-        info!("New transfer count: {}", transfer_count);
-        dir_count = count_dirs();
-        transfer_count = count_transfers(hcb_data().await);
-
-        }
+        submitted_projects.set(count_dirs());
+        info!("New directory count: {:?}", submitted_projects);
+        transfers_count.set(count_transfers(&TransferData).into());
+        info!("New transfer count: {:?}", transfers_count);
+        average_grant_value.set(avg_grant(&TransferData));
+        info!("New average grant value: {:?}", average_grant_value);
+    }
 }
 
 fn count_dirs() -> f64 {
@@ -126,12 +129,28 @@ async fn hcb_data() -> Result<Vec<Transfer>, reqwest::Error> {
     Ok(transfers)
 }
 
-fn count_transfers(transfers: Result<Vec<Transfer>, reqwest::Error>) -> u16 {
+fn count_transfers(transfers: &Result<Vec<Transfer>, reqwest::Error>) -> u16 {
     match transfers {
         Ok(count) => return count.len() as u16,
-                Err(e) => {
-                    println!("Failed to fetch transfers: {}", e);
-                    return 0;
-                }
-            };
+        Err(e) => {
+            println!("Failed to fetch transfers: {}", e);
+            return 0;
+        }
+    };
+}
+
+fn avg_grant(transfers: &Result<Vec<Transfer>, reqwest::Error>) -> f64 {
+    match transfers {
+        Ok(transfers) => {
+            let mut total = 0;
+            for transfer in transfers {
+                total += transfer.amount_cents / 100;
+            }
+            return total as f64 / transfers.len() as f64;
+        },
+        Err(e) => {
+            println!("Failed to fetch transfers: {}", e);
+            return 0.0;
+        }
+    };
 }
