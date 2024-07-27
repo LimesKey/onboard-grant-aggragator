@@ -8,3 +8,5 @@ RUN cargo build --release
 
 # Run the binary
 CMD ["./target/release/OnboardGrant"]
+EXPOSE 8521
+ENV AIRTABLE_API=get_your_own_airtable_api_key

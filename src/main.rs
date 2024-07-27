@@ -7,6 +7,7 @@ use prometheus_exporter::prometheus::{register_gauge, register_int_gauge};
 use reqwest::Url;
 use std::fs;
 use std::net::SocketAddr;
+use std::env;
 
 mod lib;
 use lib::*;
@@ -19,7 +20,18 @@ async fn main() {
     // Parse the address used to bind the exporter.
     let addr_raw = "0.0.0.0:8521";
     let addr: SocketAddr = addr_raw.parse().expect("Cannot parse listen address");
-    let TransferData = hcb_data().await;
+    let transfer_data = hcb_data().await;
+    let airtable_api: Result<String, env::VarError> = env::var("AIRTABLE_API");
+    
+    match airtable_api {
+        Ok(key) => {
+            info!("Airtable API key found");
+            airtable_verifications(&key);
+        }
+        Err(_) => {
+            info!("Airtable API key not found");
+        }
+    }
 
     // Create the metric
     let submitted_projects = register_gauge!(
@@ -49,9 +61,9 @@ async fn main() {
         // Update the metric with the current directory count
         submitted_projects.set(count_dirs());
         info!("New directory count: {:?}", submitted_projects);
-        transfers_count.set(count_transfers(&TransferData).into());
+        transfers_count.set(count_transfers(&transfer_data).into());
         info!("New transfer count: {:?}", transfers_count);
-        average_grant_value.set(avg_grant(&TransferData));
+        average_grant_value.set(avg_grant(&transfer_data));
         info!("New average grant value: {:?}", average_grant_value);
     }
 }
@@ -150,4 +162,22 @@ fn avg_grant(transfers: &Result<Vec<Transfer>, reqwest::Error>) -> f64 {
             return 0.0;
         }
     };
+}
+
+async fn airtable_verifications(api_key: &String) -> u16 {
+    let max_records = 100;
+    let view = String::from("Accepted");
+    let mut request_url: Url =
+            Url::parse("https://api.airtable.com/v0/app4Bs8Tjwvk5qcD4/Verifications").unwrap();
+        request_url.query_pairs_mut().append_pair("maxRecords", &max_records.to_string());
+        request_url
+            .query_pairs_mut()
+            .append_pair("view", &view);
+
+    let response = reqwest::get(request_url.as_str()).await;
+    let json = response.unwrap().json::<serde_json::Value>().await;
+    println!(
+            r##"Fetching transfers from OnBoard's AirTable accepted verision forms using, "{}""##, request_url);
+    println!("JSON {:?}", json);
+    15
 }
