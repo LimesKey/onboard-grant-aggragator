@@ -1,0 +1,19 @@
+#
+name: Create and publish a Docker image
+
+# Configures this workflow to run every time a change is pushed to the branch called `release`.
+on:
+  push:
+    branches: ['main']
+
+jobs: 
+    code-linting-formatting:
+        runs-on: ubuntu-latest
+        steps: 
+          - name: rust-rustfmt-check
+            # You may pin to the exact commit or the version.
+            # uses: mbrobbel/rustfmt-check@769baf4289969e8747ebd9f800fe12b005a308f1
+            uses: mbrobbel/rustfmt-check@0.11.0
+            with:
+              # GitHub token
+              token: ${{ secrets.GITHUB_TOKEN }}
