@@ -45,3 +45,8 @@ pub struct Transfer {
     date: String,
     status: String,
 }
+
+pub enum AirTableViews {
+    Pending,
+    Approved
+}

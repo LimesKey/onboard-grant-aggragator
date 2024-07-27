@@ -4,7 +4,7 @@
 use env_logger::{Builder, Env};
 use log::info;
 use prometheus_exporter::prometheus::{register_gauge, register_int_gauge};
-use reqwest::Url;
+use reqwest::{header::{HeaderMap, HeaderValue, AUTHORIZATION}, Client, Url};
 use std::fs;
 use std::net::SocketAddr;
 use std::env;
@@ -22,16 +22,6 @@ async fn main() {
     let addr: SocketAddr = addr_raw.parse().expect("Cannot parse listen address");
     let transfer_data = hcb_data().await;
     let airtable_api: Result<String, env::VarError> = env::var("AIRTABLE_API");
-    
-    match airtable_api {
-        Ok(key) => {
-            info!("Airtable API key found");
-            airtable_verifications(&key);
-        }
-        Err(_) => {
-            info!("Airtable API key not found");
-        }
-    }
 
     // Create the metric
     let submitted_projects = register_gauge!(
@@ -44,11 +34,22 @@ async fn main() {
         "transfers_count",
         "Grant transfers out of the OnBoard Hack Club Bank"
     )
-    .expect("Cannot create gauge onboard_grants_given");
+    .expect("Cannot create gauge transfers_count");
 
     // Create the metric
     let average_grant_value = register_gauge!("avg_grant", "Average dollars given per grant")
-        .expect("Cannot create gauge onboard_grants_given");
+        .expect("Cannot create gauge average_grant_value");
+
+    let airtable_records_approved_metric = register_int_gauge!(
+            "airtable_records",
+            "Number of Approved Airtable Records"
+        )
+        .expect("Cannot create gauge airtable_records_approved_metric");
+
+    let airtable_records_pending_metric = register_int_gauge!(
+            "airtable_records_pending",
+            "Number of Pending Airtable Records"
+        ).expect("Cannot create gauge airtable_records_pending_metric");
 
     // Start the exporter
     let exporter = prometheus_exporter::start(addr).expect("Cannot sta rt exporter");
@@ -65,6 +66,10 @@ async fn main() {
         info!("New transfer count: {:?}", transfers_count);
         average_grant_value.set(avg_grant(&transfer_data));
         info!("New average grant value: {:?}", average_grant_value);
+        airtable_records_approved_metric.set(airtable_verifications(airtable_api.clone(), AirTableViews::Approved).await.into());
+        info!("New airtable records approved count: {:?}", airtable_records_approved_metric);
+        airtable_records_pending_metric.set(airtable_verifications(airtable_api.clone(), AirTableViews::Pending).await.into());
+        info!("New airtable records pending count: {:?}", airtable_records_pending_metric);
     }
 }
 
@@ -164,9 +169,27 @@ fn avg_grant(transfers: &Result<Vec<Transfer>, reqwest::Error>) -> f64 {
     };
 }
 
-async fn airtable_verifications(api_key: &String) -> u16 {
-    let max_records = 100;
-    let view = String::from("Accepted");
+async fn airtable_verifications(api_key: Result<String, env::VarError>, AirTableView: AirTableViews) -> u16 {
+    let max_records = 20;
+    let view;
+    match AirTableView {
+        AirTableViews::Pending => view = "Pending",
+        AirTableViews::Approved => view = "Approved",
+    }
+
+    let true_api_key;
+
+    match api_key {
+        Ok(key) => {
+            info!("Airtable API key found");
+            true_api_key = key;
+        }
+        Err(_) => {
+            info!("Airtable API key not found");
+            return 0;
+        }
+    }
+
     let mut request_url: Url =
             Url::parse("https://api.airtable.com/v0/app4Bs8Tjwvk5qcD4/Verifications").unwrap();
         request_url.query_pairs_mut().append_pair("maxRecords", &max_records.to_string());
@@ -174,10 +197,36 @@ async fn airtable_verifications(api_key: &String) -> u16 {
             .query_pairs_mut()
             .append_pair("view", &view);
 
-    let response = reqwest::get(request_url.as_str()).await;
+
+    let auth_token: String = format!("Bearer {}", true_api_key);
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&auth_token).expect("Invalid header value"),
+    );
+
+    let response = Client::new().get(request_url.as_str()).headers(headers).send().await;
     let json = response.unwrap().json::<serde_json::Value>().await;
     println!(
             r##"Fetching transfers from OnBoard's AirTable accepted verision forms using, "{}""##, request_url);
-    println!("JSON {:?}", json);
-    15
+
+    let raw_data = json.unwrap().clone();
+    let mut num_records = None;
+    
+    if let Some(records) = raw_data.get("records") {
+        if let Some(records_array) = records.as_array() {
+            num_records = Some(records_array.len());
+        } else {
+            println!("The AirTable JSON is Invalid");
+        }
+    } else {
+        println!("The AirTable JSON is Invalid : The JSON does not contain a 'records' key");
+    }
+    
+    match num_records {
+        Some(records) => return records as u16,
+        None => return 0,
+    }
+
 }
