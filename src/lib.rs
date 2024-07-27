@@ -48,5 +48,5 @@ pub struct Transfer {
 
 pub enum AirTableViews {
     Pending,
-    Approved
+    Approved,
 }

@@ -4,10 +4,13 @@
 use env_logger::{Builder, Env};
 use log::info;
 use prometheus_exporter::prometheus::{register_gauge, register_int_gauge};
-use reqwest::{header::{HeaderMap, HeaderValue, AUTHORIZATION}, Client, Url};
+use reqwest::{
+    header::{HeaderMap, HeaderValue, AUTHORIZATION},
+    Client, Url,
+};
+use std::env;
 use std::fs;
 use std::net::SocketAddr;
-use std::env;
 
 mod lib;
 use lib::*;
@@ -40,16 +43,15 @@ async fn main() {
     let average_grant_value = register_gauge!("avg_grant", "Average dollars given per grant")
         .expect("Cannot create gauge average_grant_value");
 
-    let airtable_records_approved_metric = register_int_gauge!(
-            "airtable_records",
-            "Number of Approved Airtable Records"
-        )
-        .expect("Cannot create gauge airtable_records_approved_metric");
+    let airtable_records_approved_metric =
+        register_int_gauge!("airtable_records", "Number of Approved Airtable Records")
+            .expect("Cannot create gauge airtable_records_approved_metric");
 
     let airtable_records_pending_metric = register_int_gauge!(
-            "airtable_records_pending",
-            "Number of Pending Airtable Records"
-        ).expect("Cannot create gauge airtable_records_pending_metric");
+        "airtable_records_pending",
+        "Number of Pending Airtable Records"
+    )
+    .expect("Cannot create gauge airtable_records_pending_metric");
 
     // Start the exporter
     let exporter = prometheus_exporter::start(addr).expect("Cannot sta rt exporter");
@@ -66,10 +68,24 @@ async fn main() {
         info!("New transfer count: {:?}", transfers_count);
         average_grant_value.set(avg_grant(&transfer_data));
         info!("New average grant value: {:?}", average_grant_value);
-        airtable_records_approved_metric.set(airtable_verifications(airtable_api.clone(), AirTableViews::Approved).await.into());
-        info!("New airtable records approved count: {:?}", airtable_records_approved_metric);
-        airtable_records_pending_metric.set(airtable_verifications(airtable_api.clone(), AirTableViews::Pending).await.into());
-        info!("New airtable records pending count: {:?}", airtable_records_pending_metric);
+        airtable_records_approved_metric.set(
+            airtable_verifications(airtable_api.clone(), AirTableViews::Approved)
+                .await
+                .into(),
+        );
+        info!(
+            "New airtable records approved count: {:?}",
+            airtable_records_approved_metric
+        );
+        airtable_records_pending_metric.set(
+            airtable_verifications(airtable_api.clone(), AirTableViews::Pending)
+                .await
+                .into(),
+        );
+        info!(
+            "New airtable records pending count: {:?}",
+            airtable_records_pending_metric
+        );
     }
 }
 
@@ -169,7 +185,10 @@ fn avg_grant(transfers: &Result<Vec<Transfer>, reqwest::Error>) -> f64 {
     };
 }
 
-async fn airtable_verifications(api_key: Result<String, env::VarError>, AirTableView: AirTableViews) -> u16 {
+async fn airtable_verifications(
+    api_key: Result<String, env::VarError>,
+    AirTableView: AirTableViews,
+) -> u16 {
     let max_records = 20;
     let view;
     match AirTableView {
@@ -191,12 +210,11 @@ async fn airtable_verifications(api_key: Result<String, env::VarError>, AirTable
     }
 
     let mut request_url: Url =
-            Url::parse("https://api.airtable.com/v0/app4Bs8Tjwvk5qcD4/Verifications").unwrap();
-        request_url.query_pairs_mut().append_pair("maxRecords", &max_records.to_string());
-        request_url
-            .query_pairs_mut()
-            .append_pair("view", &view);
-
+        Url::parse("https://api.airtable.com/v0/app4Bs8Tjwvk5qcD4/Verifications").unwrap();
+    request_url
+        .query_pairs_mut()
+        .append_pair("maxRecords", &max_records.to_string());
+    request_url.query_pairs_mut().append_pair("view", &view);
 
     let auth_token: String = format!("Bearer {}", true_api_key);
 
@@ -206,14 +224,20 @@ async fn airtable_verifications(api_key: Result<String, env::VarError>, AirTable
         HeaderValue::from_str(&auth_token).expect("Invalid header value"),
     );
 
-    let response = Client::new().get(request_url.as_str()).headers(headers).send().await;
+    let response = Client::new()
+        .get(request_url.as_str())
+        .headers(headers)
+        .send()
+        .await;
     let json = response.unwrap().json::<serde_json::Value>().await;
     println!(
-            r##"Fetching transfers from OnBoard's AirTable accepted verision forms using, "{}""##, request_url);
+        r##"Fetching transfers from OnBoard's AirTable accepted verision forms using, "{}""##,
+        request_url
+    );
 
     let raw_data = json.unwrap().clone();
     let mut num_records = None;
-    
+
     if let Some(records) = raw_data.get("records") {
         if let Some(records_array) = records.as_array() {
             num_records = Some(records_array.len());
@@ -223,10 +247,9 @@ async fn airtable_verifications(api_key: Result<String, env::VarError>, AirTable
     } else {
         println!("The AirTable JSON is Invalid : The JSON does not contain a 'records' key");
     }
-    
+
     match num_records {
         Some(records) => return records as u16,
         None => return 0,
     }
-
 }
