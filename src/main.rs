@@ -217,10 +217,12 @@ async fn airtable_verifications(
             .query_pairs_mut()
             .append_pair("maxRecords", &max_records.to_string());
         request_url.query_pairs_mut().append_pair("view", &view);
-        
+
         match &page_offset {
             Some(offset) => {
-                request_url.query_pairs_mut().append_pair("offset", offset.as_str());
+                request_url
+                    .query_pairs_mut()
+                    .append_pair("offset", offset.as_str());
             }
             None => {}
         }
@@ -241,7 +243,8 @@ async fn airtable_verifications(
         let json = response.unwrap().json::<serde_json::Value>().await;
         println!(
             r##"Fetching transfers from OnBoard's AirTable accepted verision forms using, "{}", on page {}."##,
-            request_url, page_offset_count + 1
+            request_url,
+            page_offset_count + 1
         );
 
         let raw_data = json.unwrap().clone();
@@ -250,14 +253,16 @@ async fn airtable_verifications(
             if let Some(records_array) = records.as_array() {
                 num_records += records_array.len();
 
-
                 if raw_data.get("offset").is_some() {
-                    page_offset = Some(serde_json::Value::to_string(raw_data.get("offset").expect("error something to do with serde json offset idk")));
+                    page_offset = Some(serde_json::Value::to_string(
+                        raw_data
+                            .get("offset")
+                            .expect("error something to do with serde json offset idk"),
+                    ));
                     page_offset_count += 1;
                 } else {
                     page_offset = None;
                 }
-
             } else {
                 println!("The AirTable JSON is Invalid");
             }
