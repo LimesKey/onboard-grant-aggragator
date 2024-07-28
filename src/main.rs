@@ -263,8 +263,7 @@ async fn airtable_verifications(
             }
         } else {
             println!("The AirTable JSON is Invalid : The JSON does not contain a 'records' key");
-            break;
+            return num_records as u16;
         }
     }
-    return num_records as u16;
 }
