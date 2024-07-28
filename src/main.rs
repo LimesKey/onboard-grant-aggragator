@@ -189,14 +189,16 @@ async fn airtable_verifications(
     api_key: Result<String, env::VarError>,
     AirTableView: AirTableViews,
 ) -> u16 {
-    let max_records = 20;
+    let max_records = 5000;
+    let mut page_offset: Option<String> = None;
     let view;
     match AirTableView {
         AirTableViews::Pending => view = "Pending",
         AirTableViews::Approved => view = "Approved",
     }
-
+    let mut num_records = 0;
     let true_api_key;
+    let mut page_offset_count = 0;
 
     match api_key {
         Ok(key) => {
@@ -208,48 +210,61 @@ async fn airtable_verifications(
             return 0;
         }
     }
-
-    let mut request_url: Url =
-        Url::parse("https://api.airtable.com/v0/app4Bs8Tjwvk5qcD4/Verifications").unwrap();
-    request_url
-        .query_pairs_mut()
-        .append_pair("maxRecords", &max_records.to_string());
-    request_url.query_pairs_mut().append_pair("view", &view);
-
-    let auth_token: String = format!("Bearer {}", true_api_key);
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        AUTHORIZATION,
-        HeaderValue::from_str(&auth_token).expect("Invalid header value"),
-    );
-
-    let response = Client::new()
-        .get(request_url.as_str())
-        .headers(headers)
-        .send()
-        .await;
-    let json = response.unwrap().json::<serde_json::Value>().await;
-    println!(
-        r##"Fetching transfers from OnBoard's AirTable accepted verision forms using, "{}""##,
+    loop {
+        let mut request_url: Url =
+            Url::parse("https://api.airtable.com/v0/app4Bs8Tjwvk5qcD4/Verifications").unwrap();
         request_url
-    );
-
-    let raw_data = json.unwrap().clone();
-    let mut num_records = None;
-
-    if let Some(records) = raw_data.get("records") {
-        if let Some(records_array) = records.as_array() {
-            num_records = Some(records_array.len());
-        } else {
-            println!("The AirTable JSON is Invalid");
+            .query_pairs_mut()
+            .append_pair("maxRecords", &max_records.to_string());
+        request_url.query_pairs_mut().append_pair("view", &view);
+        
+        match &page_offset {
+            Some(offset) => {
+                request_url.query_pairs_mut().append_pair("offset", offset.as_str());
+            }
+            None => {}
         }
-    } else {
-        println!("The AirTable JSON is Invalid : The JSON does not contain a 'records' key");
-    }
 
-    match num_records {
-        Some(records) => return records as u16,
-        None => return 0,
+        let auth_token: String = format!("Bearer {}", true_api_key);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&auth_token).expect("Invalid header value"),
+        );
+
+        let response = Client::new()
+            .get(request_url.as_str())
+            .headers(headers)
+            .send()
+            .await;
+        let json = response.unwrap().json::<serde_json::Value>().await;
+        println!(
+            r##"Fetching transfers from OnBoard's AirTable accepted verision forms using, "{}", on page {}."##,
+            request_url, page_offset_count + 1
+        );
+
+        let raw_data = json.unwrap().clone();
+
+        if let Some(records) = raw_data.get("records") {
+            if let Some(records_array) = records.as_array() {
+                num_records += records_array.len();
+
+
+                if raw_data.get("offset").is_some() {
+                    page_offset = Some(serde_json::Value::to_string(raw_data.get("offset").expect("error something to do with serde json offset idk")));
+                    page_offset_count += 1;
+                } else {
+                    page_offset = None;
+                }
+
+            } else {
+                println!("The AirTable JSON is Invalid");
+            }
+        } else {
+            println!("The AirTable JSON is Invalid : The JSON does not contain a 'records' key");
+            break;
+        }
     }
+    return num_records as u16;
 }
