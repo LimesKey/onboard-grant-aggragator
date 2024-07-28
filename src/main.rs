@@ -254,21 +254,27 @@ async fn airtable_verifications(
                 num_records += records_array.len();
 
                 if raw_data.get("offset").is_some() {
-                    page_offset = Some(raw_data.get("offset").unwrap().to_string().replace("\"", ""));
+                    page_offset = Some(
+                        raw_data
+                            .get("offset")
+                            .unwrap()
+                            .to_string()
+                            .replace("\"", ""),
+                    );
                     page_offset_count += 1;
-                } 
-                else if page_offset_count > 0 {
-                    println!("[{}]Multiple pages of AirTable data fetched", page_offset_count + 1);
+                } else if page_offset_count > 0 {
+                    println!(
+                        "[{}]Multiple pages of AirTable data fetched",
+                        page_offset_count + 1
+                    );
                     return num_records as u16;
-                }
-                else {
+                } else {
                     return num_records as u16;
                 }
 
                 raw_data.get("error").map(|error| {
                     println!("Error: {}", error);
                 });
-
             } else {
                 println!("The AirTable JSON is Invalid");
             }
