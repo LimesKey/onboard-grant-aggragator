@@ -3,14 +3,21 @@
 
 use env_logger::{Builder, Env};
 use log::info;
-use prometheus_exporter::prometheus::{register, register_gauge, register_gauge_with_registry, register_histogram, register_int_counter_vec, register_int_gauge, IntCounterVec, Opts, Registry};
+use prometheus_exporter::prometheus::{
+    register, register_gauge, register_gauge_with_registry, register_histogram,
+    register_int_counter_vec, register_int_gauge, IntCounterVec, Opts, Registry,
+};
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION},
     Client, Url,
 };
-use std::{collections::HashMap, env, sync::{Arc, Mutex}};
 use std::fs;
 use std::net::SocketAddr;
+use std::{
+    collections::HashMap,
+    env,
+    sync::{Arc, Mutex},
+};
 
 mod lib;
 use lib::*;
@@ -26,12 +33,16 @@ async fn main() {
     let airtable_api: Result<String, env::VarError> = env::var("AIRTABLE_API");
     let raw_github_api_key: Option<String> = env::var("GITHUB_API").ok();
 
-    let opts = Opts::new("reviewer_pr_count", "Number of pull requests reviewed by each reviewer");
-    let counter_vec = register_int_counter_vec!(opts, &["reviewer"]).expect("Failed to create counter vector");
-    
+    let opts = Opts::new(
+        "reviewer_pr_count",
+        "Number of pull requests reviewed by each reviewer",
+    );
+    let counter_vec =
+        register_int_counter_vec!(opts, &["reviewer"]).expect("Failed to create counter vector");
+
     // let reviewer_pr_count = register_gauge!(
     // "reviewer_pr_count", "Number of pull requests reviewed by each reviewer").expect("Failed to create gauge");
-    
+
     let submitted_projects = register_gauge!(
         "submitted_projects",
         "Number of folders in the projects directory in the OnBoard Github"
@@ -87,7 +98,9 @@ async fn main() {
             airtable_records_pending_metric
         );
         for (reviewer, count) in fetch_pull_requests(raw_github_api_key.clone()).await {
-            counter_vec.with_label_values(&[&reviewer]).inc_by(count.into());
+            counter_vec
+                .with_label_values(&[&reviewer])
+                .inc_by(count.into());
         }
 
         transfers_count.set(count_transfers(&hcb_data().await).into());
@@ -309,27 +322,35 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, 
             reqwest::header::USER_AGENT,
             HeaderValue::from_static("Prometheus Exporter"),
         );
-        
+
         println!("GitHub API key found");
-    }
-    else {
+    } else {
         println!("No GitHub API key found");
     }
 
     let client = reqwest::Client::new();
 
     loop {
-        let mut url: Url = Url::parse("https://api.github.com/repos/hackclub/onboard/pulls").unwrap();
+        let mut url: Url =
+            Url::parse("https://api.github.com/repos/hackclub/onboard/pulls").unwrap();
         url.query_pairs_mut().append_pair("state", "all");
         url.query_pairs_mut().append_pair("per_page", "100");
-        url.query_pairs_mut().append_pair("page", &page_num.to_string());
+        url.query_pairs_mut()
+            .append_pair("page", &page_num.to_string());
 
         println!("Fetching pull requests from {}", url);
 
-        let response = client.get(url.as_str()).headers(headers.clone()).send().await.unwrap().error_for_status().expect("No Response or GitHub API Error");
+        let response = client
+            .get(url.as_str())
+            .headers(headers.clone())
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .expect("No Response or GitHub API Error");
 
         let json = response.json::<serde_json::Value>().await.unwrap();
-        
+
         if json.as_array().map_or(false, |arr| arr.is_empty()) {
             return reviewer_counts;
         }

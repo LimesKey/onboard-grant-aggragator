@@ -51,7 +51,6 @@ pub enum AirTableViews {
     Approved,
 }
 
-
 #[derive(Deserialize)]
 pub struct PullRequest {
     id: u64,
