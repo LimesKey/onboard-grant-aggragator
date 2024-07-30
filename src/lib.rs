@@ -50,3 +50,16 @@ pub enum AirTableViews {
     Pending,
     Approved,
 }
+
+
+#[derive(Deserialize)]
+pub struct PullRequest {
+    id: u64,
+    number: u64,
+    pub assignees: Vec<Assignees>,
+}
+
+#[derive(Deserialize)]
+pub struct Assignees {
+    pub login: String,
+}

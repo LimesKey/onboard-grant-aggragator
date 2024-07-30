@@ -10,3 +10,4 @@ RUN cargo build --release
 CMD ["./target/release/OnboardGrant"]
 EXPOSE 8521
 ENV AIRTABLE_API=get_your_own_airtable_api_key
+ENV GITHUB_API=get_your_own_github_api_key

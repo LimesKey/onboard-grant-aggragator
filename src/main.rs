@@ -3,12 +3,12 @@
 
 use env_logger::{Builder, Env};
 use log::info;
-use prometheus_exporter::prometheus::{register_gauge, register_int_gauge};
+use prometheus_exporter::prometheus::{register, register_gauge, register_gauge_with_registry, register_histogram, register_int_counter_vec, register_int_gauge, IntCounterVec, Opts, Registry};
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION},
     Client, Url,
 };
-use std::env;
+use std::{collections::HashMap, env, sync::{Arc, Mutex}};
 use std::fs;
 use std::net::SocketAddr;
 
@@ -20,13 +20,18 @@ async fn main() {
     // Set up logger with default level info so we can see the messages from
     // prometheus_exporter.
     Builder::from_env(Env::default().default_filter_or("info")).init();
-    // Parse the address used to bind the exporter.
+
     let addr_raw = "0.0.0.0:8521";
     let addr: SocketAddr = addr_raw.parse().expect("Cannot parse listen address");
-    let transfer_data = hcb_data().await;
     let airtable_api: Result<String, env::VarError> = env::var("AIRTABLE_API");
+    let raw_github_api_key: Option<String> = env::var("GITHUB_API").ok();
 
-    // Create the metric
+    let opts = Opts::new("reviewer_pr_count", "Number of pull requests reviewed by each reviewer");
+    let counter_vec = register_int_counter_vec!(opts, &["reviewer"]).expect("Failed to create counter vector");
+    
+    // let reviewer_pr_count = register_gauge!(
+    // "reviewer_pr_count", "Number of pull requests reviewed by each reviewer").expect("Failed to create gauge");
+    
     let submitted_projects = register_gauge!(
         "submitted_projects",
         "Number of folders in the projects directory in the OnBoard Github"
@@ -53,21 +58,15 @@ async fn main() {
     )
     .expect("Cannot create gauge airtable_records_pending_metric");
 
-    // Start the exporter
-    let exporter = prometheus_exporter::start(addr).expect("Cannot sta rt exporter");
+    let exporter = prometheus_exporter::start(addr).expect("Cannot start exporter");
     loop {
-        // Wait for a new request to come in
         let _guard = exporter.wait_request();
 
         info!("Updating metrics");
 
-        // Update the metric with the current directory count
         submitted_projects.set(count_dirs());
         info!("New directory count: {:?}", submitted_projects);
-        transfers_count.set(count_transfers(&transfer_data).into());
-        info!("New transfer count: {:?}", transfers_count);
-        average_grant_value.set(avg_grant(&transfer_data));
-        info!("New average grant value: {:?}", average_grant_value);
+
         airtable_records_approved_metric.set(
             airtable_verifications(airtable_api.clone(), AirTableViews::Approved)
                 .await
@@ -77,6 +76,7 @@ async fn main() {
             "New airtable records approved count: {:?}",
             airtable_records_approved_metric
         );
+
         airtable_records_pending_metric.set(
             airtable_verifications(airtable_api.clone(), AirTableViews::Pending)
                 .await
@@ -86,6 +86,15 @@ async fn main() {
             "New airtable records pending count: {:?}",
             airtable_records_pending_metric
         );
+        for (reviewer, count) in fetch_pull_requests(raw_github_api_key.clone()).await {
+            counter_vec.with_label_values(&[&reviewer]).inc_by(count.into());
+        }
+
+        transfers_count.set(count_transfers(&hcb_data().await).into());
+        info!("New transfer count: {:?}", transfers_count);
+
+        average_grant_value.set(avg_grant(&hcb_data().await));
+        info!("New average grant value: {:?}", average_grant_value);
     }
 }
 
@@ -282,5 +291,57 @@ async fn airtable_verifications(
             println!("The AirTable JSON is Invalid : The JSON does not contain a 'records' key");
             return num_records as u16;
         }
+    }
+}
+
+async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, u32> {
+    let mut page_num = 0;
+    let mut reviewer_counts = HashMap::new();
+    let mut headers = HeaderMap::new();
+
+    if let Some(api_key) = &github_api_key {
+        let auth_token = format!("Bearer {}", api_key);
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&auth_token).expect("Invalid header value"),
+        );
+        headers.insert(
+            reqwest::header::USER_AGENT,
+            HeaderValue::from_static("Prometheus Exporter"),
+        );
+        
+        println!("GitHub API key found");
+    }
+    else {
+        println!("No GitHub API key found");
+    }
+
+    let client = reqwest::Client::new();
+
+    loop {
+        let mut url: Url = Url::parse("https://api.github.com/repos/hackclub/onboard/pulls").unwrap();
+        url.query_pairs_mut().append_pair("state", "all");
+        url.query_pairs_mut().append_pair("per_page", "100");
+        url.query_pairs_mut().append_pair("page", &page_num.to_string());
+
+        println!("Fetching pull requests from {}", url);
+
+        let response = client.get(url.as_str()).headers(headers.clone()).send().await.unwrap().error_for_status().expect("No Response or GitHub API Error");
+
+        let json = response.json::<serde_json::Value>().await.unwrap();
+        
+        if json.as_array().map_or(false, |arr| arr.is_empty()) {
+            return reviewer_counts;
+        }
+
+        let pull_requests: Vec<PullRequest> = serde_json::from_value(json).unwrap();
+        println!("Number of fetched pull requests {}.", pull_requests.len());
+
+        for pr in pull_requests {
+            for reviewer in pr.assignees {
+                *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
+            }
+        }
+        page_num += 1;
     }
 }
