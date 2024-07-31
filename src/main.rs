@@ -4,7 +4,7 @@
 use env_logger::{Builder, Env};
 use log::info;
 use prometheus_exporter::prometheus::{
-    register_gauge, register_int_counter_vec, register_int_gauge, register_int_gauge_vec, Opts,
+    register_gauge, register_int_gauge, register_int_gauge_vec, Opts,
 };
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION},
@@ -29,7 +29,7 @@ async fn main() {
     let raw_github_api_key: Option<String> = env::var("GITHUB_API").ok();
 
     let opts = Opts::new(
-        "reviewer_pr_count",
+        "pr_reviewer_stats",
         "Number of pull requests reviewed by each reviewer",
     );
     let counter_vec =
