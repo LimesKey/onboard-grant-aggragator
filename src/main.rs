@@ -4,8 +4,7 @@
 use env_logger::{Builder, Env};
 use log::info;
 use prometheus_exporter::prometheus::{
-    register, register_gauge, register_gauge_with_registry, register_histogram,
-    register_int_counter_vec, register_int_gauge, IntCounterVec, Opts, Registry,
+    register_gauge, register_int_counter_vec, register_int_gauge, register_int_gauge_vec, Opts
 };
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION},
@@ -15,9 +14,9 @@ use std::fs;
 use std::net::SocketAddr;
 use std::{
     collections::HashMap,
-    env,
-    sync::{Arc, Mutex},
+    env
 };
+
 
 mod lib;
 use lib::*;
@@ -38,7 +37,7 @@ async fn main() {
         "Number of pull requests reviewed by each reviewer",
     );
     let counter_vec =
-        register_int_counter_vec!(opts, &["reviewer"]).expect("Failed to create counter vector");
+        register_int_gauge_vec!(opts, &["reviewer"]).expect("Failed to create counter vector");
 
     // let reviewer_pr_count = register_gauge!(
     // "reviewer_pr_count", "Number of pull requests reviewed by each reviewer").expect("Failed to create gauge");
@@ -100,7 +99,7 @@ async fn main() {
         for (reviewer, count) in fetch_pull_requests(raw_github_api_key.clone()).await {
             counter_vec
                 .with_label_values(&[&reviewer])
-                .inc_by(count.into());
+                .set(count.into());
         }
 
         transfers_count.set(count_transfers(&hcb_data().await).into());
