@@ -4,7 +4,7 @@
 use env_logger::{Builder, Env};
 use log::info;
 use prometheus_exporter::prometheus::{
-    register_gauge, register_int_counter_vec, register_int_gauge, register_int_gauge_vec, Opts
+    register_gauge, register_int_counter_vec, register_int_gauge, register_int_gauge_vec, Opts,
 };
 use reqwest::{
     header::{HeaderMap, HeaderValue, AUTHORIZATION},
@@ -12,11 +12,7 @@ use reqwest::{
 };
 use std::fs;
 use std::net::SocketAddr;
-use std::{
-    collections::HashMap,
-    env
-};
-
+use std::{collections::HashMap, env};
 
 mod lib;
 use lib::*;
