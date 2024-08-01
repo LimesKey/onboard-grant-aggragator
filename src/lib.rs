@@ -51,14 +51,59 @@ pub enum AirTableViews {
     Approved,
 }
 
-#[derive(Deserialize)]
-pub struct PullRequest {
-    id: u64,
-    number: u64,
-    pub assignees: Vec<Assignees>,
+#[derive(Debug, Deserialize)]
+pub struct Assignees {
+    pub nodes: Vec<User>,
 }
 
-#[derive(Deserialize)]
-pub struct Assignees {
+#[derive(Debug, Deserialize)]
+pub struct User {
     pub login: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PageInfo {
+    pub endCursor: Option<String>,
+    pub hasNextPage: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GraphQLError {
+    pub message: String,
+}
+
+#[derive(Serialize)]
+pub struct GraphQLQuery {
+    pub query: String,
+    pub variables: Variables,
+}
+
+#[derive(Serialize)]
+pub struct Variables {
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResponseData {
+    pub data: Option<RepositoryData>,
+    pub errors: Option<Vec<GraphQLError>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RepositoryData {
+    pub search: Search,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Search {
+    issueCount: u32,
+    pub nodes: Vec<PullRequestNode>,
+    pub pageInfo: PageInfo,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PullRequestNode {
+    number: u32,
+    pub mergedBy: Option<User>,
+    pub assignees: Assignees,
 }

@@ -32,8 +32,15 @@ async fn main() {
         "pr_reviewer_stats",
         "Number of pull requests reviewed by each reviewer",
     );
-    let counter_vec =
+    let counter_vec_assignee =
         register_int_gauge_vec!(opts, &["reviewer"]).expect("Failed to create counter vector");
+
+    let opts2 = Opts::new(
+        "pr_merger_stats",
+        "Number of pull requests reviewed by each reviewer",
+    );
+    let counter_vec_merger =
+        register_int_gauge_vec!(opts2, &["reviewer"]).expect("Failed to create counter vector");
 
     // let reviewer_pr_count = register_gauge!(
     // "reviewer_pr_count", "Number of pull requests reviewed by each reviewer").expect("Failed to create gauge");
@@ -92,8 +99,15 @@ async fn main() {
             "New airtable records pending count: {:?}",
             airtable_records_pending_metric
         );
-        for (reviewer, count) in fetch_pull_requests(raw_github_api_key.clone()).await {
-            counter_vec
+
+        let (merger, assignee) = fetch_pull_requests(raw_github_api_key.clone()).await;
+        for (reviewer, count) in merger {
+            counter_vec_merger
+                .with_label_values(&[&reviewer])
+                .set(count.into());
+        }
+        for (reviewer, count) in assignee {
+            counter_vec_assignee
                 .with_label_values(&[&reviewer])
                 .set(count.into());
         }
@@ -302,10 +316,13 @@ async fn airtable_verifications(
     }
 }
 
-async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, u32> {
-    let mut page_num = 0;
-    let mut reviewer_counts = HashMap::new();
+async fn fetch_pull_requests(
+    github_api_key: Option<String>,
+) -> (HashMap<String, u32>, HashMap<String, u32>) {
+    let mut merged_by_counts = HashMap::new();
+    let mut assignee_counts = HashMap::new();
     let mut headers = HeaderMap::new();
+    let mut cursor = None;
 
     if let Some(api_key) = &github_api_key {
         let auth_token = format!("Bearer {}", api_key);
@@ -326,38 +343,87 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, 
     let client = reqwest::Client::new();
 
     loop {
-        let mut url: Url =
-            Url::parse("https://api.github.com/repos/hackclub/onboard/pulls").unwrap();
-        url.query_pairs_mut().append_pair("state", "all");
-        url.query_pairs_mut().append_pair("per_page", "100");
-        url.query_pairs_mut()
-            .append_pair("page", &page_num.to_string());
+        let query = GraphQLQuery {
+            query: r#"
+            query FetchPullRequests($cursor: String) {
+              search(
+                first: 100
+                type: ISSUE
+                query: "is:pr repo:hackclub/onboard is:merged label:Submission"
+                after: $cursor
+              ) {
+                issueCount
+                nodes {
+                  ... on PullRequest {
+                    number
+                    mergedBy {
+                      login
+                    }
+                    assignees(first: 100) {
+                      nodes {
+                        login
+                      }
+                    }
+                  }
+                  }
+                pageInfo {
+                  endCursor
+                  hasNextPage
+                }
+              }
+            }
+            "#
+            .to_string(),
+            variables: Variables {
+                cursor: cursor.clone(),
+            },
+        };
 
-        println!("Fetching pull requests from {}", url);
+        println!("Fetching pull requests at {:?}", cursor);
 
-        let response = client
-            .get(url.as_str())
+        let res = client
+            .post("https://api.github.com/graphql")
             .headers(headers.clone())
+            .json(&query)
             .send()
             .await
             .unwrap()
             .error_for_status()
             .expect("No Response or GitHub API Error");
 
-        let json = response.json::<serde_json::Value>().await.unwrap();
+        let text = res.text().await.expect("Failed to read response body");
+        match serde_json::from_str::<ResponseData>(&text) {
+            Ok(body) => {
+                if let Some(errors) = body.errors {
+                    for error in errors {
+                        eprintln!("Error: {}", error.message);
+                    }
+                    break;
+                } else if let Some(data) = body.data {
+                    for node in data.search.nodes {
+                        if let Some(merged_by) = node.mergedBy {
+                            *merged_by_counts.entry(merged_by.login).or_insert(0) += 1;
+                        }
+                        for assignee in node.assignees.nodes {
+                            *assignee_counts.entry(assignee.login).or_insert(0) += 1;
+                        }
+                    }
 
-        if json.as_array().map_or(false, |arr| arr.is_empty()) {
-            return reviewer_counts;
-        }
+                    if !data.search.pageInfo.hasNextPage {
+                        break;
+                    }
 
-        let pull_requests: Vec<PullRequest> = serde_json::from_value(json).unwrap();
-        println!("Number of fetched pull requests {}.", pull_requests.len());
-
-        for pr in pull_requests {
-            for reviewer in pr.assignees {
-                *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
+                    cursor = data.search.pageInfo.endCursor;
+                }
+            }
+            Err(err) => {
+                // JSON decoding failed, print the error and the JSON text
+                eprintln!("JSON decoding error: {}\nJSON text: {}", err, text);
             }
         }
-        page_num += 1;
     }
+
+    info!("MergedBy counts: {:?}", merged_by_counts);
+    info!("Assignee counts: {:?}", assignee_counts);
+    return (merged_by_counts, assignee_counts);
 }
