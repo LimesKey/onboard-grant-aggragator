@@ -303,7 +303,7 @@ async fn airtable_verifications(
 }
 
 async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, u32> {
-    let mut page_num = 0;
+    let mut page_num = 1;
     let mut reviewer_counts = HashMap::new();
     let mut headers = HeaderMap::new();
 
