@@ -354,7 +354,7 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, 
         //     number_of_times += 1;
 
         // }
-        
+
         let pull_requests: Vec<PullRequest> = serde_json::from_value(json).unwrap();
         println!("Number of fetched pull requests {}.", pull_requests.len());
 
@@ -364,8 +364,7 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, 
                     for reviewer in pr.assignees {
                         *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
                     }
-                }
-                else {
+                } else {
                     println!("Pull Request {} is not a submission or dev PR", pr.number);
                 }
             }
