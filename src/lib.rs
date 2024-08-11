@@ -53,12 +53,17 @@ pub enum AirTableViews {
 
 #[derive(Deserialize)]
 pub struct PullRequest {
-    id: u64,
-    number: u64,
+    pub number: u32,
     pub assignees: Vec<Assignees>,
+    pub labels: Vec<Label>,
 }
 
 #[derive(Deserialize)]
 pub struct Assignees {
     pub login: String,
+}
+
+#[derive(Deserialize)]
+pub struct Label {
+    pub name: String,
 }

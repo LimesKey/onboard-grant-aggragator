@@ -324,7 +324,7 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, 
     }
 
     let client = reqwest::Client::new();
-
+    // let mut number_of_times = 0;
     loop {
         let mut url: Url =
             Url::parse("https://api.github.com/repos/hackclub/onboard/pulls").unwrap();
@@ -349,13 +349,25 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, 
         if json.as_array().map_or(false, |arr| arr.is_empty()) {
             return reviewer_counts;
         }
+        // if number_of_times == 0 {
+        //     println!("Pull Requests JSON: {}", json);
+        //     number_of_times += 1;
 
+        // }
+        
         let pull_requests: Vec<PullRequest> = serde_json::from_value(json).unwrap();
         println!("Number of fetched pull requests {}.", pull_requests.len());
 
         for pr in pull_requests {
-            for reviewer in pr.assignees {
-                *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
+            if !pr.labels.is_empty() {
+                if pr.labels[0].name == "Submission" || pr.labels[0].name == "Dev" {
+                    for reviewer in pr.assignees {
+                        *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
+                    }
+                }
+                else {
+                    println!("Pull Request {} is not a submission or dev PR", pr.number);
+                }
             }
         }
         page_num += 1;
