@@ -92,7 +92,7 @@ async fn main() {
             "New airtable records pending count: {:?}",
             airtable_records_pending_metric
         );
-        for (reviewer, count) in fetch_pull_requests(raw_github_api_key.clone()).await {
+        for (reviewer, count) in parse_reviewer_stats(fetch_pull_requests(raw_github_api_key.clone()).await) {
             counter_vec
                 .with_label_values(&[&reviewer])
                 .set(count.into());
@@ -302,9 +302,8 @@ async fn airtable_verifications(
     }
 }
 
-async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, u32> {
+async fn fetch_pull_requests(github_api_key: Option<String>) -> Vec<PullRequest> {
     let mut page_num = 1;
-    let mut reviewer_counts = HashMap::new();
     let mut headers = HeaderMap::new();
 
     if let Some(api_key) = &github_api_key {
@@ -324,6 +323,7 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, 
     }
 
     let client = reqwest::Client::new();
+    let mut pull_requests: Vec<PullRequest> = vec![];
     // let mut number_of_times = 0;
     loop {
         let mut url: Url =
@@ -347,28 +347,27 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> HashMap<String, 
         let json = response.json::<serde_json::Value>().await.unwrap();
 
         if json.as_array().map_or(false, |arr| arr.is_empty()) {
-            return reviewer_counts;
+            return pull_requests;
         }
-        // if number_of_times == 0 {
-        //     println!("Pull Requests JSON: {}", json);
-        //     number_of_times += 1;
 
-        // }
-
-        let pull_requests: Vec<PullRequest> = serde_json::from_value(json).unwrap();
+        pull_requests.push(serde_json::from_value(json).unwrap());
         println!("Number of fetched pull requests {}.", pull_requests.len());
-
-        for pr in pull_requests {
-            if !pr.labels.is_empty() {
-                if pr.labels[0].name == "Submission" || pr.labels[0].name == "Dev" {
-                    for reviewer in pr.assignees {
-                        *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
-                    }
-                } else {
-                    println!("Pull Request {} is not a submission or dev PR", pr.number);
-                }
-            }
-        }
         page_num += 1;
     }
+}
+
+fn parse_reviewer_stats(prs: Vec<PullRequest>) -> HashMap<String, u32> {
+    let mut reviewer_counts = HashMap::new();
+    for pr in prs {
+        if !pr.labels.is_empty() {
+            if pr.labels[0].name == "Submission" || pr.labels[0].name == "Dev" {
+                for reviewer in pr.assignees {
+                    *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
+                }
+            } else {
+                println!("Pull Request {} is not a submission or dev PR", pr.number);
+            }
+        }
+    }
+    reviewer_counts
 }
