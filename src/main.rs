@@ -64,11 +64,9 @@ async fn main() {
     )
     .expect("Cannot create gauge airtable_records_pending_metric");
 
-    let waiting_review = register_int_gauge!(
-        "waiting_review",
-        "Number of Pull Requests waiting a review"
-    )
-    .expect("Cannot create gauge airtable_records_pending_metric");
+    let waiting_review =
+        register_int_gauge!("waiting_review", "Number of Pull Requests waiting a review")
+            .expect("Cannot create gauge airtable_records_pending_metric");
 
     let exporter = prometheus_exporter::start(addr).expect("Cannot start exporter");
     loop {
@@ -98,13 +96,16 @@ async fn main() {
             "New airtable records pending count: {:?}",
             airtable_records_pending_metric
         );
-        for (reviewer, count) in parse_reviewer_stats(fetch_pull_requests(raw_github_api_key.clone()).await) {
+        for (reviewer, count) in
+            parse_reviewer_stats(fetch_pull_requests(raw_github_api_key.clone()).await)
+        {
             counter_vec
                 .with_label_values(&[&reviewer])
                 .set(count.into());
         }
 
-        waiting_review.set(awaiting_reviews(fetch_pull_requests(raw_github_api_key.clone()).await).into());
+        waiting_review
+            .set(awaiting_reviews(fetch_pull_requests(raw_github_api_key.clone()).await).into());
         info!("New waiting review count: {:?}", waiting_review);
 
         transfers_count.set(count_transfers(&hcb_data().await).into());
@@ -387,7 +388,6 @@ fn parse_reviewer_stats(prs: Vec<PullRequest>) -> HashMap<String, u32> {
 fn awaiting_reviews(prs: Vec<PullRequest>) -> u32 {
     let mut awaiting_reviews = 0;
     for pr in prs {
-        
         if pr.labels.is_empty() {
             continue;
         }
@@ -396,7 +396,6 @@ fn awaiting_reviews(prs: Vec<PullRequest>) -> u32 {
             if pr.assignees.is_empty() && pr.requested_reviewers.is_empty() && pr.is_open() {
                 awaiting_reviews += 1;
             }
-            
         }
     }
     awaiting_reviews
