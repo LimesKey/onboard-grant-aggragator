@@ -64,6 +64,12 @@ async fn main() {
     )
     .expect("Cannot create gauge airtable_records_pending_metric");
 
+    let waiting_review = register_int_gauge!(
+        "waiting_review",
+        "Number of Pull Requests waiting a review"
+    )
+    .expect("Cannot create gauge airtable_records_pending_metric");
+
     let exporter = prometheus_exporter::start(addr).expect("Cannot start exporter");
     loop {
         let _guard = exporter.wait_request();
@@ -97,6 +103,9 @@ async fn main() {
                 .with_label_values(&[&reviewer])
                 .set(count.into());
         }
+
+        waiting_review.set(awaiting_reviews(fetch_pull_requests(raw_github_api_key.clone()).await).into());
+        info!("New waiting review count: {:?}", waiting_review);
 
         transfers_count.set(count_transfers(&hcb_data().await).into());
         info!("New transfer count: {:?}", transfers_count);
@@ -312,15 +321,15 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> Vec<PullRequest>
             AUTHORIZATION,
             HeaderValue::from_str(&auth_token).expect("Invalid header value"),
         );
-        headers.insert(
-            reqwest::header::USER_AGENT,
-            HeaderValue::from_static("Prometheus Exporter"),
-        );
-
         println!("GitHub API key found");
     } else {
         println!("No GitHub API key found");
     }
+
+    headers.insert(
+        reqwest::header::USER_AGENT,
+        HeaderValue::from_static("Prometheus Exporter"),
+    );
 
     let client = reqwest::Client::new();
     let mut pull_requests: Vec<PullRequest> = vec![];
@@ -350,7 +359,10 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> Vec<PullRequest>
             return pull_requests;
         }
 
-        pull_requests.push(serde_json::from_value(json).unwrap());
+        for pull_request in json.as_array().unwrap() {
+            pull_requests.push(serde_json::from_value(pull_request.clone()).unwrap());
+        }
+
         println!("Number of fetched pull requests {}.", pull_requests.len());
         page_num += 1;
     }
@@ -370,4 +382,32 @@ fn parse_reviewer_stats(prs: Vec<PullRequest>) -> HashMap<String, u32> {
         }
     }
     reviewer_counts
+}
+
+fn awaiting_reviews(prs: Vec<PullRequest>) -> u32 {
+    let mut awaiting_reviews = 0;
+    for pr in prs {
+        
+        if pr.labels.is_empty() {
+            continue;
+        }
+
+        if pr.labels[0].name == "Submission" || pr.labels[0].name == "Dev" {
+            if pr.assignees.is_empty() && pr.requested_reviewers.is_empty() && pr.is_open() {
+                awaiting_reviews += 1;
+            }
+            
+        }
+    }
+    awaiting_reviews
+}
+
+impl IsOpen for PullRequest {
+    fn is_open(&self) -> bool {
+        self.state == State::open
+    }
+}
+
+trait IsOpen {
+    fn is_open(&self) -> bool;
 }
