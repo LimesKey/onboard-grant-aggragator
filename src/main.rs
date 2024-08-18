@@ -35,8 +35,14 @@ async fn main() {
     let counter_vec =
         register_int_gauge_vec!(opts, &["reviewer"]).expect("Failed to create counter vector");
 
-    // let reviewer_pr_count = register_gauge!(
-    // "reviewer_pr_count", "Number of pull requests reviewed by each reviewer").expect("Failed to create gauge");
+
+    let stats_merged = Opts::new(
+            "pr_reviewer_stats_merged",
+            "Number of pull requests merged reviewed by each reviewer",
+        );
+    let pr_reviewer_stats_merged = register_int_gauge_vec!(stats_merged, &["reviewer"]).expect("Failed to create counter vector");
+
+
 
     let submitted_projects = register_gauge!(
         "submitted_projects",
@@ -68,15 +74,18 @@ async fn main() {
         register_int_gauge!("waiting_review", "Number of Pull Requests waiting a review")
             .expect("Cannot create gauge airtable_records_pending_metric");
 
+
+    let mut prs = fetch_pull_requests(raw_github_api_key.clone()).await;
     let exporter = prometheus_exporter::start(addr).expect("Cannot start exporter");
     loop {
         let _guard = exporter.wait_request();
-
+    
         info!("Updating metrics");
-
+        prs = fetch_pull_requests(raw_github_api_key.clone()).await;
+    
         submitted_projects.set(count_dirs());
         info!("New directory count: {:?}", submitted_projects);
-
+    
         airtable_records_approved_metric.set(
             airtable_verifications(airtable_api.clone(), AirTableViews::Approved)
                 .await
@@ -86,7 +95,7 @@ async fn main() {
             "New airtable records approved count: {:?}",
             airtable_records_approved_metric
         );
-
+    
         airtable_records_pending_metric.set(
             airtable_verifications(airtable_api.clone(), AirTableViews::Pending)
                 .await
@@ -96,21 +105,26 @@ async fn main() {
             "New airtable records pending count: {:?}",
             airtable_records_pending_metric
         );
-        for (reviewer, count) in
-            parse_reviewer_stats(fetch_pull_requests(raw_github_api_key.clone()).await)
-        {
+        
+        for (reviewer, count) in parse_reviewer_stats(prs.clone(), State::any) {
             counter_vec
                 .with_label_values(&[&reviewer])
                 .set(count.into());
         }
-
+    
+        for (reviewer, count) in parse_reviewer_stats(prs.clone(), State::merged) {
+            pr_reviewer_stats_merged
+                .with_label_values(&[&reviewer])
+                .set(count.into());
+        }
+    
         waiting_review
-            .set(awaiting_reviews(fetch_pull_requests(raw_github_api_key.clone()).await).into());
+            .set(awaiting_reviews(prs).into());
         info!("New waiting review count: {:?}", waiting_review);
-
+    
         transfers_count.set(count_transfers(&hcb_data().await).into());
         info!("New transfer count: {:?}", transfers_count);
-
+    
         average_grant_value.set(avg_grant(&hcb_data().await));
         info!("New average grant value: {:?}", average_grant_value);
     }
@@ -361,7 +375,8 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> Vec<PullRequest>
         }
 
         for pull_request in json.as_array().unwrap() {
-            pull_requests.push(serde_json::from_value(pull_request.clone()).unwrap());
+            let pull_request = PullRequest::is_merged(serde_json::from_value(pull_request.clone()).unwrap());
+            pull_requests.push(pull_request);
         }
 
         println!("Number of fetched pull requests {}.", pull_requests.len());
@@ -369,13 +384,38 @@ async fn fetch_pull_requests(github_api_key: Option<String>) -> Vec<PullRequest>
     }
 }
 
-fn parse_reviewer_stats(prs: Vec<PullRequest>) -> HashMap<String, u32> {
+fn parse_reviewer_stats(prs: Vec<PullRequest>, state: State) -> HashMap<String, u32> {
     let mut reviewer_counts = HashMap::new();
     for pr in prs {
         if !pr.labels.is_empty() {
             if pr.labels[0].name == "Submission" || pr.labels[0].name == "Dev" {
-                for reviewer in pr.assignees {
-                    *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
+                match state {
+                    State::open => {
+                        if pr.state == State::open {
+                            for reviewer in pr.assignees {
+                                *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
+                            }
+                        }
+                    }
+                    State::closed => {
+                        if pr.state == State::closed {
+                            for reviewer in pr.assignees {
+                                *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
+                            }
+                        }
+                    }
+                    State::merged => {
+                        if pr.state == State::merged {
+                            for reviewer in pr.assignees {
+                                *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
+                            }
+                        }
+                    }
+                    State::any => {
+                        for reviewer in pr.assignees {
+                            *reviewer_counts.entry(reviewer.login).or_insert(0) += 1;
+                        }
+                    }
                 }
             } else {
                 println!("Pull Request {} is not a submission or dev PR", pr.number);
@@ -409,4 +449,17 @@ impl IsOpen for PullRequest {
 
 trait IsOpen {
     fn is_open(&self) -> bool;
+}
+
+trait IsMerged {
+    fn is_merged(self) -> Self;
+}
+
+impl IsMerged for PullRequest {
+    fn is_merged(mut self) -> Self {
+        if self.merged_at.is_some() {
+            self.state = State::merged;
+        } 
+        self // Add this line to return the modified PullRequest object
+    }
 }

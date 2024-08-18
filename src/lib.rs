@@ -46,26 +46,27 @@ pub struct Transfer {
     status: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct PullRequest {
     pub number: u32,
     pub assignees: Vec<Assignees>,
     pub labels: Vec<Label>,
     pub requested_reviewers: Vec<Reviewers>,
     pub state: State,
+    pub merged_at: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Assignees {
     pub login: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Reviewers {
     pub login: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct Label {
     pub name: String,
 }
@@ -75,9 +76,10 @@ pub enum AirTableViews {
     Approved,
 }
 
-#[derive(Deserialize, PartialEq)]
+#[derive(Deserialize, PartialEq, Clone)]
 pub enum State {
     open,
     closed,
     merged,
+    any,
 }
