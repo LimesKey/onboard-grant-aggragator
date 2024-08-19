@@ -72,7 +72,6 @@ async fn main() {
         register_int_gauge!("waiting_review", "Number of Pull Requests waiting a review")
             .expect("Cannot create gauge airtable_records_pending_metric");
 
-
     let mut prs = fetch_pull_requests(raw_github_api_key.clone()).await;
     let mut hcb_data = fetch_hcb().await;
 
