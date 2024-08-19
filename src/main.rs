@@ -72,13 +72,15 @@ async fn main() {
         register_int_gauge!("waiting_review", "Number of Pull Requests waiting a review")
             .expect("Cannot create gauge airtable_records_pending_metric");
 
+
     let mut prs = fetch_pull_requests(raw_github_api_key.clone()).await;
+    let mut hcb_data = fetch_hcb().await;
+
     let exporter = prometheus_exporter::start(addr).expect("Cannot start exporter");
     loop {
         let _guard = exporter.wait_request();
 
         info!("Updating metrics");
-        prs = fetch_pull_requests(raw_github_api_key.clone()).await;
 
         submitted_projects.set(count_dirs());
         info!("New directory count: {:?}", submitted_projects);
@@ -98,6 +100,7 @@ async fn main() {
                 .await
                 .into(),
         );
+
         info!(
             "New airtable records pending count: {:?}",
             airtable_records_pending_metric
@@ -118,11 +121,15 @@ async fn main() {
         waiting_review.set(awaiting_reviews(prs).into());
         info!("New waiting review count: {:?}", waiting_review);
 
-        transfers_count.set(count_transfers(&hcb_data().await).into());
+        transfers_count.set(count_transfers(&hcb_data).into());
         info!("New transfer count: {:?}", transfers_count);
 
-        average_grant_value.set(avg_grant(&hcb_data().await));
+        average_grant_value.set(avg_grant(&hcb_data));
         info!("New average grant value: {:?}", average_grant_value);
+
+        prs = fetch_pull_requests(raw_github_api_key.clone()).await;
+        hcb_data = fetch_hcb().await;
+        info!("Waiting for request...");
     }
 }
 
@@ -154,7 +161,7 @@ fn count_dirs() -> f64 {
     dir_count
 }
 
-async fn hcb_data() -> Result<Vec<Transfer>, reqwest::Error> {
+async fn fetch_hcb() -> Result<Vec<Transfer>, reqwest::Error> {
     let mut page_offset = 0;
     let mut transfers: Vec<Transfer> = Vec::new();
 
