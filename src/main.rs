@@ -72,7 +72,6 @@ async fn main() {
         register_int_gauge!("waiting_review", "Number of Pull Requests waiting a review")
             .expect("Cannot create gauge airtable_records_pending_metric");
 
-
     let mut prs = fetch_pull_requests(raw_github_api_key.clone()).await;
     let mut hcb_data = fetch_hcb().await;
 
@@ -393,7 +392,7 @@ fn parse_reviewer_stats(prs: Vec<PullRequest>, state: State) -> HashMap<String, 
     for pr in prs {
         if !pr.labels.is_empty() {
             // if pr.labels[0].name == "Submission" || pr.labels[0].name == "Dev" {
-             if pr.labels[0].name == "Submission" {
+            if pr.labels[0].name == "Submission" {
                 match state {
                     State::open => {
                         if pr.state == State::open {
