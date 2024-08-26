@@ -392,7 +392,8 @@ fn parse_reviewer_stats(prs: Vec<PullRequest>, state: State) -> HashMap<String, 
     let mut reviewer_counts = HashMap::new();
     for pr in prs {
         if !pr.labels.is_empty() {
-            if pr.labels[0].name == "Submission" || pr.labels[0].name == "Dev" {
+            // if pr.labels[0].name == "Submission" || pr.labels[0].name == "Dev" {
+             if pr.labels[0].name == "Submission" {
                 match state {
                     State::open => {
                         if pr.state == State::open {
