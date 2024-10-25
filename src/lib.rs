@@ -1,10 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Receipt {
-    count: i32,
-    missing: bool,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Comment {
@@ -16,15 +11,12 @@ pub struct Transaction {
     id: String,
     object: String,
     href: String,
-    amount_cents: i32,
+    amount_cents: u64,
     memo: String,
     date: String,
     #[serde(rename = "type")]
     type_: String,
     pending: bool,
-    receipts: Receipt,
-    comments: Comment,
-    tags: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

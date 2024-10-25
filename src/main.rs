@@ -464,6 +464,6 @@ impl IsMerged for PullRequest {
         if self.merged_at.is_some() {
             self.state = State::merged;
         }
-        self // Add this line to return the modified PullRequest object
+        self
     }
 }
