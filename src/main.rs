@@ -255,7 +255,7 @@ async fn airtable_verifications(
     }
     loop {
         let mut request_url: Url =
-            Url::parse("https://api.airtable.com/v0/app4Bs8Tjwvk5qcD4/Verifications").unwrap();
+            Url::parse("https://api.airtable.com/v0/app4Bs8Tjwvk5qcD4/Submissions").unwrap();
         request_url
             .query_pairs_mut()
             .append_pair("maxRecords", &max_records.to_string());
