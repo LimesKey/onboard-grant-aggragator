@@ -77,10 +77,10 @@ async fn main() {
     let mut hcb_data = fetch_hcb().await;
 
     let exporter = prometheus_exporter::start(addr).expect("Cannot start exporter");
-    
+
     loop {
         let _guard = exporter.wait_request();
-        
+
         info!("Updating metrics");
 
         submitted_projects.set(count_dirs());
