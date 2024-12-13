@@ -25,6 +25,7 @@ async fn main() {
 
     let addr_raw = "0.0.0.0:8521";
     let addr: SocketAddr = addr_raw.parse().expect("Cannot parse listen address");
+
     let airtable_api: Result<String, env::VarError> = env::var("AIRTABLE_API");
     let raw_github_api_key: Option<String> = env::var("GITHUB_API").ok();
 
@@ -76,6 +77,7 @@ async fn main() {
     let mut hcb_data = fetch_hcb().await;
 
     let exporter = prometheus_exporter::start(addr).expect("Cannot start exporter");
+
     loop {
         let _guard = exporter.wait_request();
 
